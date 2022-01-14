@@ -100,11 +100,11 @@ function Get-IcaStoreOffers {
 function Get-IcaShoppingList {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'Id')]
-        [int]$Id,
+        [Parameter(Mandatory, ParameterSetName = 'Name')]
+        [string]$Name,
 
         [Parameter(Mandatory, ParameterSetName = 'OfflineId')]
-        [int]$OfflineId,
+        [string]$OfflineId,
         
         [Parameter(Mandatory, ParameterSetName = 'All')]
         [switch]$All
@@ -118,7 +118,7 @@ function Get-IcaShoppingList {
 
     # Get all if offline id not specified
     if ($PSCmdlet.ParameterSetName -ne 'OfflineId') {
-        $Lists = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers
+        $Lists = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers | Select-Object -ExpandProperty ShoppingLists
     }
 
     # Return all
@@ -127,11 +127,14 @@ function Get-IcaShoppingList {
     } # Or get by id
     else {
         # If id is specified, get offline id from the list of all shopping lists
-        if ($PSCmdlet.ParameterSetName -eq 'Id') {
-            $OfflineId = $Lists | Where-Object { $_.Id -eq $Id }
+        if ($PSCmdlet.ParameterSetName -eq 'Name') {
+            $OfflineId = $Lists | Where-Object { $_.Title -eq $Name } | Select-Object -ExpandProperty OfflineId
 
             if ($null -eq $OfflineId) {
-                throw "Could not find shopping list with id $Id!"
+                throw "Could not find shopping list with the name $Name!"
+            }
+            elseif ($OfflineId.Count -gt 1) {
+                throw "Found multiple shopping lists with the name $Name!"
             }
         }
 
@@ -144,11 +147,10 @@ function New-IcaShoppingList {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [string]$Title,
-        
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$Article
+        [string]$Name,
+
+        [Parameter()]
+        [int64]$StoreId = 0
     )
 
     Test-IcaTicket
@@ -157,35 +159,26 @@ function New-IcaShoppingList {
         'AuthenticationTicket' = $Ticket
     }
 
-    $Now = Get-Date
+    $OfflineId = (New-Guid).Guid
 
     $Body = @{
-        'OfflineId'    = $Now.Ticks
-        'Title'        = $Title
-        'SortingScore' = 0
-        'Rows'         = $Article | ForEach-Object -Begin { $Count = 1 } -Process {
-            [pscustomobject]@{
-                'Text' = $_
-                'Quantity' = [pscustomobject]@{
-                    'unit' = 'st'
-                    'amount' = 2
-                }
-            }
-            $Count++
-        }
+        'Title'        = $Name
+        'OfflineId'    = $OfflineId
+        'SortingStore' = $StoreId
     }
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId" -Headers $Headers -Method Post -Body $Body
+    $null = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers -Method Post -Body $Body
+    return $OfflineId
 }
 
 function Remove-IcaShoppingList {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ParameterSetName = 'Id')]
-        [int]$Id,
+        [Parameter(Mandatory, ParameterSetName = 'Name')]
+        [string]$Name,
 
         [Parameter(Mandatory, ParameterSetName = 'OfflineId')]
-        [int]$OfflineId
+        [string]$OfflineId
     )
 
     Test-IcaTicket
@@ -194,14 +187,53 @@ function Remove-IcaShoppingList {
         'AuthenticationTicket' = $Ticket
     }
 
-    if ($PSCmdlet.ParameterSetName -eq 'Id') {
-        $OfflineId = Get-IcaShoppingList -Id $Id | Select-Object -ExpandProperty OfflineId
+    if ($PSCmdlet.ParameterSetName -eq 'Name') {
+        $OfflineId = Get-IcaShoppingList -Name $Name | Select-Object -ExpandProperty OfflineId
     }
 
     Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId" -Headers $Headers -Method Delete
 }
 
-function Get-IcaArticleGroups {
+function Add-IcaShoppingListItem {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$OfflineId,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$Product
+    )
+
+    Test-IcaTicket
+    
+    $Headers = @{
+        'AuthenticationTicket' = $Ticket
+    }
+
+    $Body = @{
+        'CreatedRows' = @($Product | ForEach-Object {
+                @{
+                    'ProductName'   = $_
+                    'IsStrikedOver' = $false
+                }
+            })
+    } | ConvertTo-Json -Depth 10 -Compress
+
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+}
+
+function Get-IcaUserCommonProducts {
+    Test-IcaTicket
+    
+    $Headers = @{
+        'AuthenticationTicket' = $Ticket
+    }
+
+    Invoke-RestMethod "$BaseUrl/user/commonarticles" -Headers $Headers
+}
+
+function Get-IcaProductGroups {
     [CmdletBinding()]
     param (
         [datetime]$LastSyncTime = (Get-Date '2001-01-01')
@@ -215,17 +247,23 @@ function Get-IcaArticleGroups {
 
     $LastSyncTimeString = $LastSyncTime.ToString('yyyy-MM-dd')
 
-    Invoke-RestMethod "$BaseUrl/articles/articlegroups?lastsyncdate=$LastSyncTimeString" -Headers $Headers
+    Invoke-RestMethod "$BaseUrl/articles/articlegroups?lastsyncdate=$LastSyncTimeString" -Headers $Headers | Select-Object -ExpandProperty ArticleGroups
 }
 
-function Get-IcaUserCommonArticles {
-    Test-IcaTicket
+function Get-IcaProduct {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [int64[]]$UPCCode
+    )
     
+    Test-IcaTicket
+
     $Headers = @{
         'AuthenticationTicket' = $Ticket
     }
 
-    Invoke-RestMethod "$BaseUrl/user/commonarticles" -Headers $Headers
+    Invoke-RestMethod "$BaseUrl/upclookup?upc=$($UPCCode -join ',')" -Headers $Headers
 }
 
 function Get-IcaRecipe {
@@ -276,7 +314,7 @@ function Get-IcaRecipe {
             Invoke-RestMethod "$BaseUrl/user/recipes" -Headers $Headers
         }
         'Random' {
-            Invoke-RestMethod "$BaseUrl/recipes/random?numberOfRecipes=$NumberOfRecipes" -Headers $Headers
+            Invoke-RestMethod "$BaseUrl/recipes/random?numberOfRecipes=$NumberOfRecipes" -Headers $Headers | Select-Object -ExpandProperty Recipes
         }
     }
 }
@@ -325,18 +363,14 @@ function Get-IcaRecipeCategories {
     }
 }
 
-function Get-IcaProduct {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [int64[]]$UPCCode
-    )
-    
-    Test-IcaTicket
-
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
+function New-IcaRandomRecipeList {
+    $Recipe = Get-IcaRecipe -Random -NumberOfRecipes 1
+    $Ingredients = $Recipe.IngredientGroups | ForEach-Object {
+        $_.Ingredients | ForEach-Object {
+            $_.Ingredient
+        }
     }
-
-    Invoke-RestMethod "$BaseUrl/upclookup?upc=$($UPCCode -join ',')" -Headers $Headers
+    
+    $ListId = New-IcaShoppingList -Name "Recept - $($Recipe.Title)"
+    Add-IcaShoppingListItem -OfflineId $ListId -Product $Ingredients
 }
