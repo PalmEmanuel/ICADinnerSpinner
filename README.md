@@ -2,4 +2,4 @@
 
 A module to use the unofficial API for the Swedish supermarket app ICA.
 
-Based on [the great work of Sven Dahlstrand](https://github.com/svendahlstrand/ica-api).
+Based on [the well mapped out ica-api](https://github.com/svendahlstrand/ica-api).
