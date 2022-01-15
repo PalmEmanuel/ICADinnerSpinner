@@ -43,7 +43,7 @@ function Get-IcaUserBonusInfo {
 
 function Get-IcaStore {
     param (
-        [Parameter(Mandatory, ParameterSetName = 'Id')]
+        [Parameter(Mandatory, ParameterSetName = 'Id', ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
         [int]$Id,
 
@@ -103,7 +103,7 @@ function Get-IcaShoppingList {
         [Parameter(Mandatory, ParameterSetName = 'Name')]
         [string]$Name,
 
-        [Parameter(Mandatory, ParameterSetName = 'OfflineId')]
+        [Parameter(Mandatory, ParameterSetName = 'OfflineId', ValueFromPipeline = $true)]
         [string]$OfflineId,
         
         [Parameter(Mandatory, ParameterSetName = 'All')]
@@ -146,7 +146,7 @@ function Get-IcaShoppingList {
 function New-IcaShoppingList {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
         [string]$Name,
 
         [Parameter()]
@@ -174,10 +174,10 @@ function New-IcaShoppingList {
 function Remove-IcaShoppingList {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ParameterSetName = 'Name')]
+        [Parameter(Mandatory, ParameterSetName = 'Name', ValueFromPipeline = $true)]
         [string]$Name,
 
-        [Parameter(Mandatory, ParameterSetName = 'OfflineId')]
+        [Parameter(Mandatory, ParameterSetName = 'OfflineId', ValueFromPipeline = $true)]
         [string]$OfflineId
     )
 
@@ -197,10 +197,10 @@ function Remove-IcaShoppingList {
 function Add-IcaShoppingListItem {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
         [string]$OfflineId,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
         [string[]]$Product
     )
@@ -253,7 +253,7 @@ function Get-IcaProductGroups {
 function Get-IcaProduct {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
         [int64[]]$UPCCode
     )
     
@@ -268,25 +268,30 @@ function Get-IcaProduct {
 
 function Get-IcaRecipe {
     param (
-        [Parameter(Mandatory, ParameterSetName = 'Id')]
+        [Parameter(Mandatory, ParameterSetName = 'Id', ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
-        [int]$Id,
+        [int[]]$Id,
 
-        [Parameter(ParameterSetName = 'Id')]
-        [ValidateNotNullOrEmpty()]
-        [switch]$ExcludeRating,
-
-        [Parameter(Mandatory, ParameterSetName = 'String')]
-        [ValidateNotNullOrEmpty()]
+        [Parameter(ParameterSetName = 'String')]
+        [AllowEmptyString()]
         [string]$SearchString,
 
-        [Parameter(Mandatory, ParameterSetName = 'Random')]
-        [ValidateNotNullOrEmpty()]
-        [switch]$Random,
+        [Parameter(ParameterSetName = 'RandomCategory')]
+        [Parameter(ParameterSetName = 'Random')]
+        [Parameter(ParameterSetName = 'String')]
+        [int]$NumberOfRecipes = 1,
+
+        [Parameter(Mandatory, ParameterSetName = 'RandomCategory')]
+        [ValidateRange(1, [int64]::MaxValue)]
+        [int]$CategoryId,
+
+        [Parameter(ParameterSetName = 'RandomCategory')]
+        [Parameter(ParameterSetName = 'Random')]
+        [Parameter(ParameterSetName = 'String')]
+        [switch]$Full,
 
         [Parameter(ParameterSetName = 'Random')]
-        [ValidateNotNullOrEmpty()]
-        [int]$NumberOfRecipes = 5,
+        [switch]$Random,
 
         [Parameter(Mandatory, ParameterSetName = 'User')]
         [switch]$SavedByUser
@@ -302,21 +307,47 @@ function Get-IcaRecipe {
 
     switch ($PSCmdlet.ParameterSetName) {
         'Id' {
-            $Recipe = Invoke-RestMethod "$BaseUrl/recipes/recipe/$Id" -Headers $Headers
-            if (-not $ExcludeRating.IsPresent) {
-                
-            }
+            $Recipes = $Id | ForEach-Object { Invoke-RestMethod "$BaseUrl/recipes/recipe/$_" -Headers $Headers }
         }
         'String' {
-            Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=10000&pageNumber=0&sorting=0" -Headers $Headers
+            $Page = 0
+            do {
+                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=1000&pageNumber=$Page&sorting=0" -Headers $Headers
+                $Page++
+                $Recipes += $Result.Recipes
+            } while ($Page -le $Result.NumberOfPages -and $Recipes.Count -lt $NumberOfRecipes)
         }
         'User' {
-            Invoke-RestMethod "$BaseUrl/user/recipes" -Headers $Headers
+            $Recipes = Invoke-RestMethod "$BaseUrl/user/recipes" -Headers $Headers | Select-Object -ExpandProperty UserRecipes | ForEach-Object {
+                Get-IcaRecipe -Id $_.RecipeId
+            }
+            $NumberOfRecipes = $Recipes.Count
         }
-        'Random' {
-            Invoke-RestMethod "$BaseUrl/recipes/random?numberOfRecipes=$NumberOfRecipes" -Headers $Headers | Select-Object -ExpandProperty Recipes
+        { $_ -like 'Random*' } {
+            if ($CategoryId -ge 0) {
+                $Recipes = Invoke-RestMethod "$BaseUrl/recipes/categories/general/${CategoryId}?recordsPerPage=1000&pageNumber=0" -Headers $Headers | 
+                Select-Object -ExpandProperty Recipes |
+                Sort-Object { Get-Random }
+            }
+            elseif ($Random.IsPresent) {
+                Write-Warning @'
+The endpoint used for random recipes is limited to only around 50 recipes at a time with a fairly sparse selection of recipes.
+For a larger selection to randomize from, send an empty string using the -SearchString parameter combined with -NumberOfRecipes.
+'@
+                $Recipes = Invoke-RestMethod "$BaseUrl/recipes/random?numberOfRecipes=$NumberOfRecipes" -Headers $Headers | Select-Object -ExpandProperty Recipes
+            }
+            else {
+                throw 'Parameter combination not supported!'
+            }
         }
     }
+
+    if ($Full.IsPresent) {
+        Write-Warning 'The Full parameter means that a lot of requests will be made to the ICA API. This can take a while.'
+        $Recipes = $Recipes | ForEach-Object { Get-IcaRecipe -Id $_.Id }
+    }
+
+    Write-Output $Recipes | Sort-Object { Get-Random } | Select-Object -First $NumberOfRecipes
 }
 
 function Get-IcaRecipeFilters {    
@@ -326,45 +357,27 @@ function Get-IcaRecipeFilters {
         'AuthenticationTicket' = $Ticket
     }
     
-    Invoke-RestMethod "$BaseUrl/recipes/search/filters" -Headers $Headers
+    Invoke-RestMethod "$BaseUrl/recipes/search/filters" -Headers $Headers | Select-Object -ExpandProperty categories
 }
 
 function Get-IcaRecipeCategories {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory, ParameterSetName = 'Id')]
-        [int]$Id,
-
-        [Parameter(Mandatory, ParameterSetName = 'All')]
-        [switch]$all
-    )
-
     Test-IcaTicket
 
     $Headers = @{
         'AuthenticationTicket' = $Ticket
     }
-    
-    switch ($PSCmdlet.ParameterSetName) {
-        'Id' {
-            $Properties = @(
-                'ImageId'
-                'Title'
-                'CookingTime'
-                'AverageRating'
-                'OfferCount'
-                'IngredientCount'
-            ) -join ','
-            Invoke-RestMethod "$BaseUrl/recipes/categories/general/$Id?recordsPerPage=10000&pageNumber=0&include=$Properties" -Headers $Headers
-        }
-        'All' {
-            Invoke-RestMethod "$BaseUrl/recipes/categories/general" -Headers $Headers
-        }
-    }
+
+    Invoke-RestMethod "$BaseUrl/recipes/categories/general" -Headers $Headers | Select-Object -ExpandProperty Categories
 }
 
 function New-IcaRandomRecipeList {
-    $Recipe = Get-IcaRecipe -Random -NumberOfRecipes 1
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [int]$CategoryId
+    )
+
+    $Recipe = Get-IcaRecipe -Random -NumberOfRecipes 1 -CategoryId $CategoryId
     $Ingredients = $Recipe.IngredientGroups | ForEach-Object {
         $_.Ingredients | ForEach-Object {
             $_.Ingredient
