@@ -106,6 +106,10 @@ function Get-IcaShoppingList {
         [Parameter(Mandatory, ParameterSetName = 'OfflineId', ValueFromPipeline = $true)]
         [string]$OfflineId,
         
+        [Parameter(ParameterSetName = 'Name')]
+        [Parameter(ParameterSetName = 'OfflineId')]
+        [switch]$CommonProducts,
+        
         [Parameter(Mandatory, ParameterSetName = 'All')]
         [switch]$All
     )
@@ -137,9 +141,16 @@ function Get-IcaShoppingList {
                 throw "Found multiple shopping lists with the name $Name!"
             }
         }
-
+        
         # Get list details by offline id
-        Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId" -Headers $Headers
+        $Url = "$BaseUrl/user/offlineshoppinglists/$OfflineId"
+
+        if ($CommonProducts.IsPresent) {
+            Invoke-RestMethod "$Url/common" -Headers $Headers | Select-Object -ExpandProperty CommonProducts
+        }
+        else {
+            Invoke-RestMethod $Url -Headers $Headers
+        }
     }
 }
 
@@ -165,6 +176,8 @@ function New-IcaShoppingList {
         'Title'        = $Name
         'OfflineId'    = $OfflineId
         'SortingStore' = $StoreId
+        'Rows' = @()
+        'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
     }
 
     $null = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers -Method Post -Body $Body
@@ -178,7 +191,7 @@ function Remove-IcaShoppingList {
         [string]$Name,
 
         [Parameter(Mandatory, ParameterSetName = 'OfflineId', ValueFromPipeline = $true)]
-        [string]$OfflineId
+        [string]$ListOfflineId
     )
 
     Test-IcaTicket
@@ -188,21 +201,21 @@ function Remove-IcaShoppingList {
     }
 
     if ($PSCmdlet.ParameterSetName -eq 'Name') {
-        $OfflineId = Get-IcaShoppingList -Name $Name | Select-Object -ExpandProperty OfflineId
+        $ListOfflineId = Get-IcaShoppingList -Name $Name | Select-Object -ExpandProperty OfflineId
     }
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId" -Headers $Headers -Method Delete
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId" -Headers $Headers -Method Delete
 }
 
 function Add-IcaShoppingListItem {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory, ValueFromPipeline = $true)]
-        [string]$OfflineId,
+        [string]$ListOfflineId,
 
         [Parameter(Mandatory, ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
-        [string[]]$Product
+        [string[]]$ProductName
     )
 
     Test-IcaTicket
@@ -212,25 +225,101 @@ function Add-IcaShoppingListItem {
     }
 
     $Body = @{
-        'CreatedRows' = @($Product | ForEach-Object {
+        'CreatedRows' = @(
+            $ProductName | ForEach-Object {
                 @{
                     'ProductName'   = $_
                     'IsStrikedOver' = $false
                 }
-            })
+            }
+        )
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$OfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
 }
 
-function Get-IcaUserCommonProducts {
+function Remove-IcaShoppingListItem {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        [string]$ListOfflineId,
+
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$ProductOfflineId
+    )
+
     Test-IcaTicket
     
     $Headers = @{
         'AuthenticationTicket' = $Ticket
     }
 
-    Invoke-RestMethod "$BaseUrl/user/commonarticles" -Headers $Headers
+    $Body = [ordered]@{
+        'ChangedShoppingListProperties' = @{
+        }
+        'CreatedRows' = @()
+        'ChangedRows' = @()
+        'DeletedRows' = $ProductOfflineId
+    } | ConvertTo-Json -Depth 10 -Compress
+
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+}
+
+# Get input list, make a diff check and compose a body with created, changed and deleted rows
+function Set-IcaShoppingList {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        [string]$ListOfflineId,
+
+        [Parameter(ValueFromPipeline = $true)]
+        [string]$Name
+    )
+
+    Test-IcaTicket
+    
+    $Headers = @{
+        'AuthenticationTicket' = $Ticket
+    }
+
+    $Body = @{
+        'ChangedShoppingListProperties' = @{
+            'Title' = $Name
+            'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
+        }
+        'CreatedRows' = @()
+        'ChangedRows' = @()
+        'DeletedRows' = @()
+    } | ConvertTo-Json -Depth 10 -Compress
+
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+}
+
+function Get-IcaUserProducts {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ParameterSetName = 'Common')]
+        [switch]$CommonProducts,
+
+        [Parameter(Mandatory, ParameterSetName = 'Base')]
+        [switch]$BaseItems
+    )
+
+    Test-IcaTicket
+    
+    $Headers = @{
+        'AuthenticationTicket' = $Ticket
+    }
+
+    switch ($PSCmdlet.ParameterSetName) {
+        'Common' {
+            Invoke-RestMethod "$BaseUrl/user/commonarticles" -Headers $Headers
+        }
+        'Base' {
+            Invoke-RestMethod "$BaseUrl/user/baseitems" -Headers $Headers
+        }
+    }
 }
 
 function Get-IcaProductGroups {
@@ -367,7 +456,8 @@ function Get-IcaRecipeCategories {
         'AuthenticationTicket' = $Ticket
     }
 
-    Invoke-RestMethod "$BaseUrl/recipes/categories/general" -Headers $Headers | Select-Object -ExpandProperty Categories
+    # Invoke-RestMethod "$BaseUrl/recipes/categories/general" -Headers $Headers | Select-Object -ExpandProperty Categories
+    Invoke-RestMethod "$BaseUrl/recipes/categories/puff?includeWeeklyMixCategory=true" -Headers $Headers | Select-Object -ExpandProperty Categories
 }
 
 function New-IcaRandomRecipeList {
@@ -386,4 +476,14 @@ function New-IcaRandomRecipeList {
     
     $ListId = New-IcaShoppingList -Name "Recept - $($Recipe.Title)"
     Add-IcaShoppingListItem -OfflineId $ListId -Product $Ingredients
+}
+
+function Get-IcaCurrentInfo {
+    Test-IcaTicket
+    
+    $Headers = @{
+        'AuthenticationTicket' = $Ticket
+    }
+
+    Invoke-RestMethod "$BaseUrl/info/urgent" -Headers $Headers
 }
