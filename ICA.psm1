@@ -1,6 +1,16 @@
 $script:BaseURL = 'https://handla.api.ica.se/api'
 $script:Ticket = ''
 
+$PSDefaultParameterValues = @{
+    'Invoke-RestMethod:ContentType' = 'application/json; charset=utf-8'
+}
+
+class IcaFilter : System.Management.Automation.IValidateSetValuesGenerator {
+    [string[]] GetValidValues() {
+        return (Get-IcaRecipeFilters).Options.Id | Sort-Object -Unique
+    }
+}
+
 function Test-IcaTicket {
     if ([string]::IsNullOrWhiteSpace($script:Ticket)) {
         throw 'Please run Connect-IcaAPI before using this command.'
@@ -176,7 +186,7 @@ function New-IcaShoppingList {
         'Title'        = $Name
         'OfflineId'    = $OfflineId
         'SortingStore' = $StoreId
-        'Rows' = @()
+        'Rows'         = @()
         'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
     }
 
@@ -235,7 +245,7 @@ function Add-IcaShoppingListItem {
         )
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
 }
 
 function Remove-IcaShoppingListItem {
@@ -258,43 +268,43 @@ function Remove-IcaShoppingListItem {
     $Body = [ordered]@{
         'ChangedShoppingListProperties' = @{
         }
-        'CreatedRows' = @()
-        'ChangedRows' = @()
-        'DeletedRows' = $ProductOfflineId
+        'CreatedRows'                   = @()
+        'ChangedRows'                   = @()
+        'DeletedRows'                   = $ProductOfflineId
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
+    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
 }
 
 # Get input list, make a diff check and compose a body with created, changed and deleted rows
-function Set-IcaShoppingList {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory, ValueFromPipeline = $true)]
-        [string]$ListOfflineId,
+# function Set-IcaShoppingList {
+#     [CmdletBinding()]
+#     param (
+#         [Parameter(Mandatory, ValueFromPipeline = $true)]
+#         [string]$ListOfflineId,
 
-        [Parameter(ValueFromPipeline = $true)]
-        [string]$Name
-    )
+#         [Parameter(ValueFromPipeline = $true)]
+#         [string]$Name
+#     )
 
-    Test-IcaTicket
+#     Test-IcaTicket
     
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
+#     $Headers = @{
+#         'AuthenticationTicket' = $Ticket
+#     }
 
-    $Body = @{
-        'ChangedShoppingListProperties' = @{
-            'Title' = $Name
-            'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
-        }
-        'CreatedRows' = @()
-        'ChangedRows' = @()
-        'DeletedRows' = @()
-    } | ConvertTo-Json -Depth 10 -Compress
+#     $Body = @{
+#         'ChangedShoppingListProperties' = @{
+#             'Title'        = $Name
+#             'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
+#         }
+#         'CreatedRows'                   = @()
+#         'ChangedRows'                   = @()
+#         'DeletedRows'                   = @()
+#     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body -ContentType 'application/json; charset=utf-8'
-}
+#     Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
+# }
 
 function Get-IcaUserProducts {
     [CmdletBinding()]
@@ -361,20 +371,29 @@ function Get-IcaRecipe {
         [ValidateNotNullOrEmpty()]
         [int[]]$Id,
 
-        [Parameter(ParameterSetName = 'String')]
+        [Parameter(Mandatory, ParameterSetName = 'String')]
         [AllowEmptyString()]
         [string]$SearchString,
 
-        [Parameter(ParameterSetName = 'RandomCategory')]
+        [Parameter(Mandatory, ParameterSetName = 'Filter')]
+        [ValidateSet([IcaFilter])]
+        [string[]]$Filter,
+
+        [Parameter(ParameterSetName = 'String')]
+        [Parameter(ParameterSetName = 'Filter')]
+        [int]$StoreId = 0,
+
+        [Parameter(ParameterSetName = 'Filter')]
+        [Parameter(ParameterSetName = 'Category')]
         [Parameter(ParameterSetName = 'Random')]
         [Parameter(ParameterSetName = 'String')]
         [int]$NumberOfRecipes = 1,
 
-        [Parameter(Mandatory, ParameterSetName = 'RandomCategory')]
-        [ValidateRange(1, [int64]::MaxValue)]
+        [Parameter(Mandatory, ParameterSetName = 'Category')]
         [int]$CategoryId,
 
-        [Parameter(ParameterSetName = 'RandomCategory')]
+        [Parameter(ParameterSetName = 'Filter')]
+        [Parameter(ParameterSetName = 'Category')]
         [Parameter(ParameterSetName = 'Random')]
         [Parameter(ParameterSetName = 'String')]
         [switch]$Full,
@@ -401,10 +420,20 @@ function Get-IcaRecipe {
         'String' {
             $Page = 0
             do {
-                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=1000&pageNumber=$Page&sorting=0" -Headers $Headers
+                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=1000&pageNumber=$Page&sorting=$StoreId" -Headers $Headers
                 $Page++
                 $Recipes += $Result.Recipes
             } while ($Page -le $Result.NumberOfPages -and $Recipes.Count -lt $NumberOfRecipes)
+            $Recipes = $Recipes | Sort-Object { Get-Random } | Select-Object -First $NumberOfRecipes
+        }
+        'Filter' {
+            $Page = 0
+            do {
+                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=&recordsPerPage=1000&pageNumber=$Page&filters=$($Filter -join ',')&sorting=$StoreId" -Headers $Headers
+                $Page++
+                $Recipes += $Result.Recipes
+            } while ($Page -le $Result.NumberOfPages -and $Recipes.Count -lt $NumberOfRecipes)
+            $Recipes = $Recipes | Sort-Object { Get-Random } | Select-Object -First $NumberOfRecipes
         }
         'User' {
             $Recipes = Invoke-RestMethod "$BaseUrl/user/recipes" -Headers $Headers | Select-Object -ExpandProperty UserRecipes | ForEach-Object {
@@ -412,7 +441,7 @@ function Get-IcaRecipe {
             }
             $NumberOfRecipes = $Recipes.Count
         }
-        { $_ -like 'Random*' } {
+        'Random' {
             if ($CategoryId -ge 0) {
                 $Recipes = Invoke-RestMethod "$BaseUrl/recipes/categories/general/${CategoryId}?recordsPerPage=1000&pageNumber=0" -Headers $Headers | 
                 Select-Object -ExpandProperty Recipes |
@@ -432,7 +461,7 @@ For a larger selection to randomize from, send an empty string using the -Search
     }
 
     if ($Full.IsPresent) {
-        Write-Warning 'The Full parameter means that a lot of requests will be made to the ICA API. This can take a while.'
+        Write-Warning "The Full parameter means that one extra request to the ICA API will be made for each recipe found, up to $NumberOfRecipes (NumberOfRecipes). This can take a while."
         $Recipes = $Recipes | ForEach-Object { Get-IcaRecipe -Id $_.Id }
     }
 
