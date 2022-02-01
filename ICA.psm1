@@ -1,20 +1,95 @@
 $script:BaseURL = 'https://handla.api.ica.se/api'
-$script:Ticket = ''
 
-$PSDefaultParameterValues = @{
-    'Invoke-RestMethod:ContentType' = 'application/json; charset=utf-8'
+# Common parameters for all API requests in the module
+# The authentication ticket gets added to this splat hash by Connect-IcaAPI
+$script:CommonParams = @{
+    'ContentType' = 'application/json; charset=utf-8'
 }
 
+# Define a ValidateSetGenerator that gets the recipe categories
 class IcaFilter : System.Management.Automation.IValidateSetValuesGenerator {
     [string[]] GetValidValues() {
-        return (Get-IcaRecipeFilters).Options.Id | Sort-Object -Unique
+        return (Get-IcaRecipeFilters).Options.Id | Select-Object -Unique
+    }
+}
+
+class IcaProductRecipeReference {
+    [int]$Id # Id of the recipe
+    
+    [double]$Quantity
+    
+    [ValidateNotNullOrEmpty()]
+    [string]$Unit
+
+    IcaProductRecipeReference(
+        [int]$Id, 
+        [double]$Quantity,
+        [string]$Unit
+    ) {
+        $this.Id = $Id
+        $this.Quantity = $Quantity
+        $this.Unit = $Unit
+    }
+}
+
+class IcaProduct {
+    [int]$InternalOrder # -1..-$Count
+
+    [ValidateNotNullOrEmpty()]
+    [string]$ProductName
+
+    [bool]$IsStrikedOver
+
+    [double]$Quantity
+    
+    [int]$SourceId
+    
+    [int]$ArticleGroupId
+    
+    [int]$ArticleGroupIdExtended
+    
+    [ValidateNotNullOrEmpty()]
+    [IcaProductRecipeReference[]]$Recipes
+    
+    [ValidateNotNullOrEmpty()]
+    [string]$Unit
+    
+    [ValidateNotNullOrEmpty()]
+    [string]$LatestChange # yyyy-MM-ddTHH:mm:ssZ
+    
+    [guid]$OfflineId # guid
+
+    IcaProduct(
+        [int]$InternalOrder,
+        [string]$ProductName,
+        [bool]$IsStrikedOver,
+        [double]$Quantity,
+        [int]$SourceId,
+        [int]$ArticleGroupId,
+        [int]$ArticleGroupIdExtended,
+        [IcaProductRecipeReference[]]$Recipes,
+        [string]$Unit,
+        [string]$LatestChange, # yyyy-MM-ddTHH:mm:ssZ
+        [guid]$OfflineId # guid
+    ) {
+        $this.InternalOrder = $InternalOrder
+        $this.ProductName = $ProductName
+        $this.IsStrikedOver = $IsStrikedOver
+        $this.Quantity = $Quantity
+        $this.SourceId = $SourceId
+        $this.ArticleGroupId = $ArticleGroupId
+        $this.ArticleGroupIdExtended = $ArticleGroupIdExtended
+        $this.Recipes = $Recipes
+        $this.Unit = $Unit
+        $this.LatestChange = $LatestChange
+        $this.OfflineId = $OfflineId
     }
 }
 
 function Test-IcaTicket {
-    if ([string]::IsNullOrWhiteSpace($script:Ticket)) {
+    if (-not $script:CommonParams.ContainsKey('Headers')) {
         throw 'Please run Connect-IcaAPI before using this command.'
-    }    
+    }
 }
 
 function Connect-IcaAPI {
@@ -29,26 +104,28 @@ function Connect-IcaAPI {
     )
 
     $BasicAuth = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("${UserName}:${Password}"))
-    $AuthResponse = Invoke-WebRequest -Headers @{ 'Authorization' = "Basic $BasicAuth" } -Uri "$BaseURL/login"
-    $script:Ticket = $AuthResponse.Headers.AuthenticationTicket[0]
+    $AuthResponse = Invoke-WebRequest -Headers @{ 'Authorization' = "Basic $BasicAuth" } -Uri "$script:BaseURL/login"
+
+    # Add a header with the ticket to the common parameters hashtable for splatting
+    $script:CommonParams['Headers'] = @{
+        'AuthenticationTicket' = $AuthResponse.Headers.AuthenticationTicket[0]
+    }
 }
 
-function Get-IcaUserCardInfo {    
+function Disconnect-IcaAPI {
+    $script:CommonParams['Headers'] = @{}    
+}
+
+function Get-IcaUserCardInfo {
     Test-IcaTicket
     
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-    Invoke-RestMethod "$BaseUrl/user/cardaccounts" -Headers $Headers
+    Invoke-RestMethod "$script:BaseURL/user/cardaccounts" @script:CommonParams
 }
 
 function Get-IcaUserBonusInfo {    
     Test-IcaTicket
     
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-    Invoke-RestMethod "$BaseUrl/user/minbonustransaction" -Headers $Headers
+    Invoke-RestMethod "$script:BaseURL/user/minbonustransaction" @script:CommonParams | Select-Object -ExpandProperty TransactionSummaryByMonth
 }
 
 function Get-IcaStore {
@@ -72,22 +149,18 @@ function Get-IcaStore {
     
     Test-IcaTicket
     
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-
     switch ($PSCmdlet.ParameterSetName) {
         'Id' {
-            Invoke-RestMethod "$BaseUrl/stores/$Id" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/stores/$Id" @script:CommonParams
         }
         'String' {
-            Invoke-RestMethod "$BaseUrl/stores/search?Filters&Phrase=$SearchString" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/stores/search?Filters&Phrase=$SearchString" @script:CommonParams
         }
         'SyncTime' {
-            Invoke-RestMethod "$BaseUrl/stores/?LastSyncDate=$($LastSyncTime.ToString('yyyy-MM-dd'))" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/stores/?LastSyncDate=$($LastSyncTime.ToString('yyyy-MM-dd'))" @script:CommonParams
         }
         'User' {
-            Invoke-RestMethod "$BaseUrl/user/stores" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/user/stores" @script:CommonParams
         }
     }
 }
@@ -100,11 +173,7 @@ function Get-IcaStoreOffers {
     
     Test-IcaTicket
     
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-    
-    Invoke-RestMethod "$BaseUrl/offers?Stores=$($StoreId -join ',')" -Headers $Headers
+    Invoke-RestMethod "$script:BaseURL/offers?Stores=$($StoreId -join ',')" @script:CommonParams
 }
 
 function Get-IcaShoppingList {
@@ -125,14 +194,10 @@ function Get-IcaShoppingList {
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     # Get all if offline id not specified
     if ($PSCmdlet.ParameterSetName -ne 'OfflineId') {
-        $Lists = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers | Select-Object -ExpandProperty ShoppingLists
+        $Lists = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams | Select-Object -ExpandProperty ShoppingLists
     }
 
     # Return all
@@ -153,13 +218,13 @@ function Get-IcaShoppingList {
         }
         
         # Get list details by offline id
-        $Url = "$BaseUrl/user/offlineshoppinglists/$OfflineId"
+        $Url = "$script:BaseURL/user/offlineshoppinglists/$OfflineId"
 
         if ($CommonProducts.IsPresent) {
-            Invoke-RestMethod "$Url/common" -Headers $Headers | Select-Object -ExpandProperty CommonProducts
+            Invoke-RestMethod "$Url/common" @script:CommonParams | Select-Object -ExpandProperty CommonProducts
         }
         else {
-            Invoke-RestMethod $Url -Headers $Headers
+            Invoke-RestMethod $Url @script:CommonParams
         }
     }
 }
@@ -175,10 +240,6 @@ function New-IcaShoppingList {
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     $OfflineId = (New-Guid).Guid
 
@@ -190,7 +251,7 @@ function New-IcaShoppingList {
         'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
     }
 
-    $null = Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists" -Headers $Headers -Method Post -Body $Body
+    $null = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams -Method Post -Body $Body
     return $OfflineId
 }
 
@@ -205,16 +266,12 @@ function Remove-IcaShoppingList {
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     if ($PSCmdlet.ParameterSetName -eq 'Name') {
         $ListOfflineId = Get-IcaShoppingList -Name $Name | Select-Object -ExpandProperty OfflineId
     }
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId" -Headers $Headers -Method Delete
+    Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId" @script:CommonParams -Method Delete
 }
 
 function Add-IcaShoppingListItem {
@@ -229,10 +286,6 @@ function Add-IcaShoppingListItem {
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     $Body = @{
         'CreatedRows' = @(
@@ -245,7 +298,7 @@ function Add-IcaShoppingListItem {
         )
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
+    Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body
 }
 
 function Remove-IcaShoppingListItem {
@@ -260,20 +313,16 @@ function Remove-IcaShoppingListItem {
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     $Body = [ordered]@{
         'ChangedShoppingListProperties' = @{
         }
         'CreatedRows'                   = @()
         'ChangedRows'                   = @()
-        'DeletedRows'                   = $ProductOfflineId
+        'DeletedRows'                   = @($ProductOfflineId)
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
+    Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body
 }
 
 # Get input list, make a diff check and compose a body with created, changed and deleted rows
@@ -289,7 +338,7 @@ function Remove-IcaShoppingListItem {
 
 #     Test-IcaTicket
     
-#     $Headers = @{
+#     $script:Headers = @{
 #         'AuthenticationTicket' = $Ticket
 #     }
 
@@ -303,7 +352,7 @@ function Remove-IcaShoppingListItem {
 #         'DeletedRows'                   = @()
 #     } | ConvertTo-Json -Depth 10 -Compress
 
-#     Invoke-RestMethod "$BaseUrl/user/offlineshoppinglists/$ListOfflineId/sync" -Headers $Headers -Method Post -Body $Body
+#     Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body
 # }
 
 function Get-IcaUserProducts {
@@ -313,21 +362,23 @@ function Get-IcaUserProducts {
         [switch]$CommonProducts,
 
         [Parameter(Mandatory, ParameterSetName = 'Base')]
-        [switch]$BaseItems
+        [switch]$BaseItems,
+
+        [Parameter(Mandatory, ParameterSetName = 'MostPurchased')]
+        [switch]$MostPurchased
     )
 
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     switch ($PSCmdlet.ParameterSetName) {
         'Common' {
-            Invoke-RestMethod "$BaseUrl/user/commonarticles" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/user/commonarticles" @script:CommonParams
         }
         'Base' {
-            Invoke-RestMethod "$BaseUrl/user/baseitems" -Headers $Headers
+            Invoke-RestMethod "$script:BaseURL/user/baseitems" @script:CommonParams
+        }
+        'MostPurchased' {
+            Invoke-RestMethod "$script:BaseURL/user/getMostPurchasedItems" @script:CommonParams
         }
     }
 }
@@ -339,30 +390,34 @@ function Get-IcaProductGroups {
     )
     
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
     $LastSyncTimeString = $LastSyncTime.ToString('yyyy-MM-dd')
 
-    Invoke-RestMethod "$BaseUrl/articles/articlegroups?lastsyncdate=$LastSyncTimeString" -Headers $Headers | Select-Object -ExpandProperty ArticleGroups
+    Invoke-RestMethod "$script:BaseURL/articles/articlegroups?lastsyncdate=$LastSyncTimeString" @script:CommonParams | Select-Object -ExpandProperty ArticleGroups
 }
 
 function Get-IcaProduct {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        [Parameter(Mandatory, ParameterSetName = 'All')]
+        [switch]$All,
+
+        [Parameter(Mandatory, ParameterSetName = 'UPC', ValueFromPipeline = $true)]
         [int64[]]$UPCCode
     )
     
     Test-IcaTicket
 
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
+    $LastSyncTimeString = $LastSyncTime.ToString('yyyy-MM-dd')
 
-    Invoke-RestMethod "$BaseUrl/upclookup?upc=$($UPCCode -join ',')" -Headers $Headers
+    switch ($PSCmdlet.ParameterSetName) {
+        'All' {
+            Invoke-RestMethod "$script:BaseURL/articles/articles?lastsyncdate=$LastSyncTimeString" @script:CommonParams | Select-Object -ExpandProperty Articles
+        }
+        'UPC' {
+            Invoke-RestMethod "$script:BaseURL/upclookup?upc=$($UPCCode -join ',')" @script:CommonParams
+        }
+    }
 }
 
 function Get-IcaRecipe {
@@ -370,6 +425,10 @@ function Get-IcaRecipe {
         [Parameter(Mandatory, ParameterSetName = 'Id', ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
         [int[]]$Id,
+
+        [Parameter(ParameterSetName = 'Id')]
+        [ValidateNotNullOrEmpty()]
+        [switch]$GeneralOffers,
 
         [Parameter(Mandatory, ParameterSetName = 'String')]
         [AllowEmptyString()]
@@ -407,20 +466,21 @@ function Get-IcaRecipe {
     
     Test-IcaTicket
 
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-
     # Needs [System.Net.WebUtility]::HtmlDecode for the CookingSteps property (and maybe others)
 
     switch ($PSCmdlet.ParameterSetName) {
         'Id' {
-            $Recipes = $Id | ForEach-Object { Invoke-RestMethod "$BaseUrl/recipes/recipe/$_" -Headers $Headers }
+            if ($GeneralOffers.IsPresent) {
+                return Invoke-RestMethod "$script:BaseURL/recipes/recipe/$_/generaloffers" @script:CommonParams
+            }
+            else {
+                $Recipes = $Id | ForEach-Object { Invoke-RestMethod "$script:BaseURL/recipes/recipe/$_" @script:CommonParams }
+            }
         }
         'String' {
             $Page = 0
             do {
-                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=1000&pageNumber=$Page&sorting=$StoreId" -Headers $Headers
+                $Result = Invoke-RestMethod "$script:BaseURL/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=1000&pageNumber=$Page&sorting=$StoreId" @script:CommonParams
                 $Page++
                 $Recipes += $Result.Recipes
             } while ($Page -le $Result.NumberOfPages -and $Recipes.Count -lt $NumberOfRecipes)
@@ -429,21 +489,21 @@ function Get-IcaRecipe {
         'Filter' {
             $Page = 0
             do {
-                $Result = Invoke-RestMethod "$BaseUrl/recipes/searchwithfilters?phrase=&recordsPerPage=1000&pageNumber=$Page&filters=$($Filter -join ',')&sorting=$StoreId" -Headers $Headers
+                $Result = Invoke-RestMethod "$script:BaseURL/recipes/searchwithfilters?phrase=&recordsPerPage=1000&pageNumber=$Page&filters=$($Filter -join ',')&sorting=$StoreId" @script:CommonParams
                 $Page++
                 $Recipes += $Result.Recipes
             } while ($Page -le $Result.NumberOfPages -and $Recipes.Count -lt $NumberOfRecipes)
             $Recipes = $Recipes | Sort-Object { Get-Random } | Select-Object -First $NumberOfRecipes
         }
         'User' {
-            $Recipes = Invoke-RestMethod "$BaseUrl/user/recipes" -Headers $Headers | Select-Object -ExpandProperty UserRecipes | ForEach-Object {
+            $Recipes = Invoke-RestMethod "$script:BaseURL/user/recipes" @script:CommonParams | Select-Object -ExpandProperty UserRecipes | ForEach-Object {
                 Get-IcaRecipe -Id $_.RecipeId
             }
             $NumberOfRecipes = $Recipes.Count
         }
         'Random' {
             if ($CategoryId -ge 0) {
-                $Recipes = Invoke-RestMethod "$BaseUrl/recipes/categories/general/${CategoryId}?recordsPerPage=1000&pageNumber=0" -Headers $Headers | 
+                $Recipes = Invoke-RestMethod "$script:BaseURL/recipes/categories/general/${CategoryId}?recordsPerPage=1000&pageNumber=0" @script:CommonParams | 
                 Select-Object -ExpandProperty Recipes |
                 Sort-Object { Get-Random }
             }
@@ -452,7 +512,7 @@ function Get-IcaRecipe {
 The endpoint used for random recipes is limited to only around 50 recipes at a time with a fairly sparse selection of recipes.
 For a larger selection to randomize from, send an empty string using the -SearchString parameter combined with -NumberOfRecipes.
 '@
-                $Recipes = Invoke-RestMethod "$BaseUrl/recipes/random?numberOfRecipes=$NumberOfRecipes" -Headers $Headers | Select-Object -ExpandProperty Recipes
+                $Recipes = Invoke-RestMethod "$script:BaseURL/recipes/random?numberOfRecipes=$NumberOfRecipes" @script:CommonParams | Select-Object -ExpandProperty Recipes
             }
             else {
                 throw 'Parameter combination not supported!'
@@ -468,25 +528,43 @@ For a larger selection to randomize from, send an empty string using the -Search
     Write-Output $Recipes | Sort-Object { Get-Random } | Select-Object -First $NumberOfRecipes
 }
 
-function Get-IcaRecipeFilters {    
+function Save-IcaRecipe {
+    param (
+        [Parameter(Mandatory)]
+        [int[]]$Id
+    )
+    
     Test-IcaTicket
 
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
+    $Body = @{
+        'Recipes' = @($Id)
+    } | ConvertTo-Json -Depth 10 -Compress
+
+    Invoke-RestMethod "$script:BaseURL/user/recipes" @script:CommonParams -Method POST -Body $Body
+}
+
+function Remove-IcaRecipe {
+    param (
+        [Parameter(Mandatory)]
+        [int[]]$Id
+    )
     
-    Invoke-RestMethod "$BaseUrl/recipes/search/filters" -Headers $Headers | Select-Object -ExpandProperty categories
+    Test-IcaTicket
+
+    Invoke-RestMethod "$script:BaseURL/user/recipes?recipes=$($Id -join ',')" @script:CommonParams -Method Delete
+}
+
+function Get-IcaRecipeFilters {    
+    Test-IcaTicket
+    
+    Invoke-RestMethod "$script:BaseURL/recipes/search/filters" @script:CommonParams | Select-Object -ExpandProperty categories
 }
 
 function Get-IcaRecipeCategories {
     Test-IcaTicket
 
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
-
-    # Invoke-RestMethod "$BaseUrl/recipes/categories/general" -Headers $Headers | Select-Object -ExpandProperty Categories
-    Invoke-RestMethod "$BaseUrl/recipes/categories/puff?includeWeeklyMixCategory=true" -Headers $Headers | Select-Object -ExpandProperty Categories
+    # Invoke-RestMethod "$script:BaseURL/recipes/categories/general" @script:CommonParams | Select-Object -ExpandProperty Categories
+    Invoke-RestMethod "$script:BaseURL/recipes/categories/puff?includeWeeklyMixCategory=true" @script:CommonParams | Select-Object -ExpandProperty Categories
 }
 
 function New-IcaRandomRecipeList {
@@ -509,10 +587,6 @@ function New-IcaRandomRecipeList {
 
 function Get-IcaCurrentInfo {
     Test-IcaTicket
-    
-    $Headers = @{
-        'AuthenticationTicket' = $Ticket
-    }
 
-    Invoke-RestMethod "$BaseUrl/info/urgent" -Headers $Headers
+    Invoke-RestMethod "$script:BaseURL/info/urgent" @script:CommonParams
 }
