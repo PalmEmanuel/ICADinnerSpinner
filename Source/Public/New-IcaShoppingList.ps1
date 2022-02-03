@@ -8,18 +8,19 @@ function New-IcaShoppingList {
         [int64]$StoreId = 0
     )
 
-    Test-IcaTicket
+    Test-IcaConnection
 
     $OfflineId = (New-Guid).Guid
 
     $Body = @{
-        'Title'        = $Name
         'OfflineId'    = $OfflineId
+        'Title'        = $Name
+        'CommentText'  = ''
         'SortingStore' = $StoreId
         'Rows'         = @()
-        'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
-    }
+        'LatestChange' = Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ'
+    } | ConvertTo-Json -Compress
 
-    $null = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams -Method Post -Body $Body
+    $null = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams -Method Post -Body $Body -ErrorAction Stop
     return $OfflineId
 }

@@ -4,7 +4,7 @@ function Get-IcaStoreOffers {
         [string[]]$StoreId
     )
     
-    Test-IcaTicket
+    Test-IcaConnection
     
-    Invoke-RestMethod "$script:BaseURL/offers?Stores=$($StoreId -join ',')" @script:CommonParams
+    Invoke-RestMethod "$script:BaseURL/offers?Stores=$($StoreId -join ',')" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty Offers
 }

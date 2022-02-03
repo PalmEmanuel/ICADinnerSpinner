@@ -1,5 +1,5 @@
 function Get-IcaUserCardInfo {
-    Test-IcaTicket
+    Test-IcaConnection
     
-    Invoke-RestMethod "$script:BaseURL/user/cardaccounts" @script:CommonParams
+    Invoke-RestMethod "$script:BaseURL/user/cardaccounts" @script:CommonParams -ErrorAction Stop
 }

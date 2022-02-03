@@ -9,7 +9,7 @@ function Remove-IcaShoppingListItem {
         [string[]]$ProductOfflineId
     )
 
-    Test-IcaTicket
+    Test-IcaConnection
 
     $Body = [ordered]@{
         'ChangedShoppingListProperties' = @{
@@ -19,5 +19,5 @@ function Remove-IcaShoppingListItem {
         'DeletedRows'                   = @($ProductOfflineId)
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body
+    Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body -ErrorAction Stop
 }

@@ -10,7 +10,7 @@ function Connect-IcaAPI {
     )
 
     $BasicAuth = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("${UserName}:$(ConvertFrom-SecureString $Password -AsPlainText)"))
-    $AuthResponse = Invoke-WebRequest -Headers @{ 'Authorization' = "Basic $BasicAuth" } -Uri "$script:BaseURL/login"
+    $AuthResponse = Invoke-WebRequest -Headers @{ 'Authorization' = "Basic $BasicAuth" } -Uri "$script:BaseURL/login" -ErrorAction Stop
 
     # Add a header with the ticket to the common parameters hashtable for splatting
     $script:CommonParams['Headers'] = @{

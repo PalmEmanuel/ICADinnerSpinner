@@ -1,5 +1,5 @@
 function Get-IcaCurrentInfo {
-    Test-IcaTicket
+    Test-IcaConnection
 
-    Invoke-RestMethod "$script:BaseURL/info/urgent" @script:CommonParams
+    Invoke-RestMethod "$script:BaseURL/info/urgent" @script:CommonParams -ErrorAction Stop
 }

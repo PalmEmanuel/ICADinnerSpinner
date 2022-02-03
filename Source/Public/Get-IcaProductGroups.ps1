@@ -4,9 +4,9 @@ function Get-IcaProductGroups {
         [datetime]$LastSyncTime = (Get-Date '2001-01-01')
     )
     
-    Test-IcaTicket
+    Test-IcaConnection
 
     $LastSyncTimeString = $LastSyncTime.ToString('yyyy-MM-dd')
 
-    Invoke-RestMethod "$script:BaseURL/articles/articlegroups?lastsyncdate=$LastSyncTimeString" @script:CommonParams | Select-Object -ExpandProperty ArticleGroups
+    Invoke-RestMethod "$script:BaseURL/articles/articlegroups?lastsyncdate=$LastSyncTimeString" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty ArticleGroups
 }

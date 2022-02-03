@@ -4,7 +4,7 @@ function Remove-IcaRecipe {
         [int[]]$Id
     )
     
-    Test-IcaTicket
+    Test-IcaConnection
 
-    Invoke-RestMethod "$script:BaseURL/user/recipes?recipes=$($Id -join ',')" @script:CommonParams -Method Delete
+    Invoke-RestMethod "$script:BaseURL/user/recipes?recipes=$($Id -join ',')" @script:CommonParams -Method Delete -ErrorAction Stop
 }

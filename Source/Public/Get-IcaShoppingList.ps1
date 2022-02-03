@@ -1,7 +1,8 @@
 function Get-IcaShoppingList {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'Name')]
+        [Parameter(ParameterSetName = 'Name')]
+        [ValidateNotNullOrEmpty()]
         [string]$Name,
 
         [Parameter(Mandatory, ParameterSetName = 'OfflineId', ValueFromPipeline = $true)]
@@ -9,22 +10,19 @@ function Get-IcaShoppingList {
         
         [Parameter(ParameterSetName = 'Name')]
         [Parameter(ParameterSetName = 'OfflineId')]
-        [switch]$CommonProducts,
-        
-        [Parameter(Mandatory, ParameterSetName = 'All')]
-        [switch]$All
+        [switch]$CommonProducts
     )
 
-    Test-IcaTicket
+    Test-IcaConnection
 
     # Get all if offline id not specified
     if ($PSCmdlet.ParameterSetName -ne 'OfflineId') {
-        $Lists = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams | Select-Object -ExpandProperty ShoppingLists
+        $Lists = Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty ShoppingLists
     }
 
     # Return all
-    if ($PSCmdlet.ParameterSetName -eq 'All') {
-        $Lists
+    if ($PSCmdlet.ParameterSetName -eq 'Name' -and [string]::IsNullOrWhiteSpace($Name)) {
+        return $Lists
     } # Or get by id
     else {
         # If id is specified, get offline id from the list of all shopping lists
@@ -43,10 +41,10 @@ function Get-IcaShoppingList {
         $Url = "$script:BaseURL/user/offlineshoppinglists/$OfflineId"
 
         if ($CommonProducts.IsPresent) {
-            Invoke-RestMethod "$Url/common" @script:CommonParams | Select-Object -ExpandProperty CommonProducts
+            Invoke-RestMethod "$Url/common" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty CommonProducts
         }
         else {
-            Invoke-RestMethod $Url @script:CommonParams
+            Invoke-RestMethod $Url @script:CommonParams -ErrorAction Stop
         }
     }
 }

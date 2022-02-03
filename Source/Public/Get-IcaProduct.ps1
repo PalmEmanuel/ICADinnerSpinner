@@ -1,23 +1,23 @@
 function Get-IcaProduct {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ParameterSetName = 'All')]
-        [switch]$All,
+        [Parameter(ParameterSetName = 'All', DontShow)]
+        [datetime]$LastSyncDate = (Get-Date '2001-01-01'),
 
         [Parameter(Mandatory, ParameterSetName = 'UPC', ValueFromPipeline = $true)]
         [int64[]]$UPCCode
     )
     
-    Test-IcaTicket
+    Test-IcaConnection
 
-    $LastSyncTimeString = $LastSyncTime.ToString('yyyy-MM-dd')
+    $LastSyncTimeString = $LastSyncDate.ToString('yyyy-MM-dd')
 
     switch ($PSCmdlet.ParameterSetName) {
         'All' {
-            Invoke-RestMethod "$script:BaseURL/articles/articles?lastsyncdate=$LastSyncTimeString" @script:CommonParams | Select-Object -ExpandProperty Articles
+            Invoke-RestMethod "$script:BaseURL/articles/articles?lastsyncdate=$LastSyncTimeString" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty Articles
         }
         'UPC' {
-            Invoke-RestMethod "$script:BaseURL/upclookup?upc=$($UPCCode -join ',')" @script:CommonParams
+            Invoke-RestMethod "$script:BaseURL/upclookup?upc=$($UPCCode -join ',')" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty Items
         }
     }
 }

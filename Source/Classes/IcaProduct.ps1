@@ -3,7 +3,6 @@ class IcaProductRecipeReference {
     
     [double]$Quantity
     
-    [ValidateNotNullOrEmpty()]
     [string]$Unit
 
     IcaProductRecipeReference(
@@ -27,6 +26,8 @@ class IcaProduct {
 
     [double]$Quantity
     
+    [string]$Unit
+    
     [int]$SourceId
     
     [int]$ArticleGroupId
@@ -35,9 +36,6 @@ class IcaProduct {
     
     [ValidateNotNullOrEmpty()]
     [IcaProductRecipeReference[]]$Recipes
-    
-    [ValidateNotNullOrEmpty()]
-    [string]$Unit
     
     [ValidateNotNullOrEmpty()]
     [string]$LatestChange # yyyy-MM-ddTHH:mm:ssZ
@@ -49,11 +47,11 @@ class IcaProduct {
         [string]$ProductName,
         [bool]$IsStrikedOver,
         [double]$Quantity,
+        [string]$Unit,
         [int]$SourceId,
         [int]$ArticleGroupId,
         [int]$ArticleGroupIdExtended,
         [IcaProductRecipeReference[]]$Recipes,
-        [string]$Unit,
         [string]$LatestChange, # yyyy-MM-ddTHH:mm:ssZ
         [guid]$OfflineId # guid
     ) {

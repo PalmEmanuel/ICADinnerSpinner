@@ -11,17 +11,17 @@ function Get-IcaUserProducts {
         [switch]$MostPurchased
     )
 
-    Test-IcaTicket
+    Test-IcaConnection
 
     switch ($PSCmdlet.ParameterSetName) {
         'Common' {
-            Invoke-RestMethod "$script:BaseURL/user/commonarticles" @script:CommonParams
+            Invoke-RestMethod "$script:BaseURL/user/commonarticles" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty CommonArticles
         }
         'Base' {
-            Invoke-RestMethod "$script:BaseURL/user/baseitems" @script:CommonParams
+            Invoke-RestMethod "$script:BaseURL/user/baseitems" @script:CommonParams -ErrorAction Stop
         }
         'MostPurchased' {
-            Invoke-RestMethod "$script:BaseURL/user/getMostPurchasedItems" @script:CommonParams
+            Invoke-RestMethod "$script:BaseURL/user/getMostPurchasedItems" @script:CommonParams -ErrorAction Stop
         }
     }
 }

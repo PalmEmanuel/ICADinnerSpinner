@@ -4,11 +4,11 @@ function Save-IcaRecipe {
         [int[]]$Id
     )
     
-    Test-IcaTicket
+    Test-IcaConnection
 
     $Body = @{
         'Recipes' = @($Id)
     } | ConvertTo-Json -Depth 10 -Compress
 
-    Invoke-RestMethod "$script:BaseURL/user/recipes" @script:CommonParams -Method POST -Body $Body
+    Invoke-RestMethod "$script:BaseURL/user/recipes" @script:CommonParams -Method Post -Body $Body -ErrorAction Stop
 }

@@ -9,7 +9,7 @@
 #         [string]$Name
 #     )
 
-#     Test-IcaTicket
+#     Test-IcaConnection
     
 #     $script:Headers = @{
 #         'AuthenticationTicket' = $Ticket
@@ -18,12 +18,12 @@
 #     $Body = @{
 #         'ChangedShoppingListProperties' = @{
 #             'Title'        = $Name
-#             'LatestChange' = Get-Date -Format 'yyyy-MM-ddThh:mm:ssZ'
+#             'LatestChange' = Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ'
 #         }
 #         'CreatedRows'                   = @()
 #         'ChangedRows'                   = @()
 #         'DeletedRows'                   = @()
 #     } | ConvertTo-Json -Depth 10 -Compress
 
-#     Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body
+#     Invoke-RestMethod "$script:BaseURL/user/offlineshoppinglists/$ListOfflineId/sync" @script:CommonParams -Method Post -Body $Body -ErrorAction Stop
 # }

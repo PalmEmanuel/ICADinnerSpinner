@@ -1,5 +1,5 @@
 function Get-IcaUserBonusInfo {    
-    Test-IcaTicket
+    Test-IcaConnection
     
-    Invoke-RestMethod "$script:BaseURL/user/minbonustransaction" @script:CommonParams | Select-Object -ExpandProperty TransactionSummaryByMonth
+    Invoke-RestMethod "$script:BaseURL/user/minbonustransaction" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty TransactionSummaryByMonth
 }

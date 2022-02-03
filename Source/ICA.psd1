@@ -1,6 +1,6 @@
 @{
     # Script module or binary module file associated with this manifest.
-    RootModule = 'ICA.psm1'
+    RootModule        = 'ICA.psm1'
 
     # Version number of this module.
     ModuleVersion     = '0.1.0'
@@ -21,7 +21,7 @@
     Copyright         = '(c) Emanuel Palm. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description       = 'A module to use the unofficial API for the Swedish grocery store ICA'
+    Description       = 'A module to use the unofficial API for the app of the Swedish grocery store chain ICA.'
 
     # Minimum version of the PowerShell engine required by this module
     # PowerShellVersion = ''
@@ -48,7 +48,10 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    # ScriptsToProcess = @()
+    ScriptsToProcess  = @(
+        "$PSScriptRoot\Classes\IcaFilter.ps1"
+        "$PSScriptRoot\Classes\IcaProduct.ps1"
+    )
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()
@@ -68,6 +71,7 @@
         'Get-IcaProductGroups'
         'Get-IcaRecipe'
         'Get-IcaRecipeCategories'
+        'Get-IcaRecipeCurrentRating'
         'Get-IcaRecipeFilters'
         'Get-IcaShoppingList'
         'Get-IcaStore'
