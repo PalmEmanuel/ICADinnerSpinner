@@ -1,19 +1,14 @@
 function Get-IcaUserProducts {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'Common')]
-        [switch]$CommonProducts,
-
-        [Parameter(Mandatory, ParameterSetName = 'Base')]
-        [switch]$BaseItems,
-
-        [Parameter(Mandatory, ParameterSetName = 'MostPurchased')]
-        [switch]$MostPurchased
+        [Parameter(Mandatory)]
+        [ValidateSet('Common','Base','MostPurchased','SmartReminders')]
+        [string]$Type
     )
 
     Test-IcaConnection
 
-    switch ($PSCmdlet.ParameterSetName) {
+    switch ($Type) {
         'Common' {
             Invoke-RestMethod "$script:BaseURL/user/commonarticles" @script:CommonParams -ErrorAction Stop | Select-Object -ExpandProperty CommonArticles
         }
@@ -22,6 +17,9 @@ function Get-IcaUserProducts {
         }
         'MostPurchased' {
             Invoke-RestMethod "$script:BaseURL/user/getMostPurchasedItems" @script:CommonParams -ErrorAction Stop
+        }
+        'SmartReminders' {
+            Invoke-RestMethod "$script:BaseURL/user/smartreminders" @script:CommonParams -ErrorAction Stop
         }
     }
 }

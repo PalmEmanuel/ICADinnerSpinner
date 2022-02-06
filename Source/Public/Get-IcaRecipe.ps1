@@ -33,7 +33,7 @@ function Get-IcaRecipe {
 
         [Parameter(ParameterSetName = 'String')]
         [Parameter(ParameterSetName = 'Filter')]
-        [int]$StoreId = 0,
+        [IcaSorting]$Sorting = [int][IcaSorting]::Relevance,
 
         [Parameter(ParameterSetName = 'Id')]
         [ValidateNotNullOrEmpty()]
@@ -70,10 +70,12 @@ function Get-IcaRecipe {
         { $_ -eq 'String' -or $_ -eq 'Filter' } {
             switch ($PSCmdlet.ParameterSetName) {
                 'String' {
-                    $Url = "$script:BaseURL/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=$RecordsPerPage&pageNumber=$Page&sorting=$StoreId"
+                    $Url = "$script:BaseURL/recipes/searchwithfilters?phrase=$SearchString&recordsPerPage=$RecordsPerPage&pageNumber=$Page&sorting=$([int]$Sorting)"
+                    Write-Debug "Url = $Url"
                 }
                 'Filter' {
-                    $Url = "$script:BaseURL/recipes/searchwithfilters?phrase=&recordsPerPage=$RecordsPerPage&pageNumber=$Page&filters=$($Filter -join ',')&sorting=$StoreId"
+                    $Url = "$script:BaseURL/recipes/searchwithfilters?phrase=&recordsPerPage=$RecordsPerPage&pageNumber=$Page&filters=$($Filter -join ',')&sorting=$([int]$Sorting)"
+                    Write-Debug "Url = $Url"
                 }
             }
 

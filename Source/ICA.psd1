@@ -51,6 +51,7 @@
     ScriptsToProcess  = @(
         "$PSScriptRoot\Classes\IcaFilter.ps1"
         "$PSScriptRoot\Classes\IcaProduct.ps1"
+        "$PSScriptRoot\Classes\IcaSorting.ps1"
     )
 
     # Type files (.ps1xml) to be loaded when importing this module
@@ -64,6 +65,7 @@
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
     FunctionsToExport = @(
+        'Add-IcaStore'
         'Connect-IcaAPI'
         'Disconnect-IcaAPI'
         'Get-IcaCurrentInfo'
@@ -76,15 +78,21 @@
         'Get-IcaShoppingList'
         'Get-IcaStore'
         'Get-IcaStoreOffers'
+        'Get-IcaStoreOpeningHours'
+        'Get-IcaUserAuthInfo'
         'Get-IcaUserBonusInfo'
         'Get-IcaUserCardInfo'
         'Get-IcaUserProducts'
+        'Get-IcaUserQRCode'
+        'Get-IcaUserStoreExperience'
         'New-IcaRandomRecipeList'
         'New-IcaShoppingList'
         'Remove-IcaRecipe'
         'Remove-IcaShoppingList'
         'Remove-IcaShoppingListItem'
+        'Remove-IcaStore'
         'Save-IcaRecipe'
+        'Test-IcaAuthToken'
     )
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -107,9 +115,7 @@
 
     # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
     PrivateData       = @{
-
         PSData = @{
-
             # Tags applied to this module. These help with module discovery in online galleries.
             # Tags = @()
 
